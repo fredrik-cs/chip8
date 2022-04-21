@@ -24,6 +24,7 @@ use settings::{WIDTH, HEIGHT};
 mod fontset;
 mod graphics;
 mod settings;
+mod constants;
 
 fn main(){
     // Make the chip8 backend

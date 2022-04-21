@@ -1,5 +1,7 @@
 use crate::fontset::CHIP8_FONTSET;
 use crate::settings::*;
+use crate::constants::*;
+
 use std::fs;
 use std::path::Path;
 use std::fs::File;
@@ -7,6 +9,7 @@ use std::io::Read;
 use rand::prelude::*;
 use rand::Rng;
 use std::num::Wrapping;
+use crate::constants::{CHIP_WIDTH, CHIP_HEIGHT, CHIP_MEMORY_SIZE};
 
 
 pub struct Chip {
@@ -15,7 +18,7 @@ pub struct Chip {
     V: [u8; 16],
     I: u16,
     pc: u16,
-    pub(crate) gfx: [u8; 64*32],
+    pub(crate) gfx: [u8; (CHIP_WIDTH * CHIP_HEIGHT) as usize],
     delay_timer: u8,
     sound_timer: u8,
     stack: [u16; 16],
@@ -29,11 +32,11 @@ impl Chip {
     pub fn initialize() -> Chip {
         let mut chip = Chip {
             opcode: 0,
-            memory: [0; 4096],
+            memory: [0; CHIP_MEMORY_SIZE],
             V: [0; 16],
             I: 0,
             pc: 0x200,
-            gfx: [0; 64*32],
+            gfx: [0; (CHIP_WIDTH * CHIP_HEIGHT) as usize],
             delay_timer: 0,
             sound_timer: 0,
             stack: [0; 16],
@@ -60,10 +63,13 @@ impl Chip {
 
     }
 
-    fn randomize_gfx(&mut self) {
-        for i in 0..64*32 {
+    fn get_nd_opcode(&mut self, n: u32) -> u16 {
+        let base_dex: u16 = 0x10; let base_bin: u16 = 2;
+        return (self.opcode & (0xF * base_dex.pow(n - 1))) >> base_bin.pow(n)
+    }
 
-        }
+    fn get_nd_v(&mut self, n: u32) -> u16 {
+        return self.V[self.get_nd_opcode(n) as usize] as u16
     }
 
     pub fn draw(&mut self, frame: &mut [u8]) {
@@ -94,12 +100,12 @@ impl Chip {
 
         match self.opcode & 0xF000
         {
-            0x0000 => {
+            OP_ROUTINE => {
                 match self.opcode & 0x00FF {
-                    0x00E0 => { // x00E0 : Clear screen
+                    OP_CLEAR_SCREEN => { // x00E0 : Clear screen
 
                     }
-                    0x00EE => { // x00EE : Return from subroutine
+                    OP_RETURN => { // x00EE : Return from subroutine
                         self.sp -= 1;
                         self.pc = self.stack[self.sp as usize] + 2;
                     }
@@ -109,100 +115,99 @@ impl Chip {
                 }
             }
 
-            0x1000 => { // x1NNN : Jump to address NNN
+            OP_JUMP => { // x1NNN : Jump to address NNN
                 self.pc = self.opcode & 0x0FFF
             }
 
-            0x2000 => { // x2NNN : Call subroutine at NNN
+            OP_CALL => { // x2NNN : Call subroutine at NNN
                 self.stack[self.sp as usize] = self.pc;
                 self.sp += 1;
                 self.pc = self.opcode & 0x0FFF;
             }
 
-            0x3000 => { // x3XNN : Skip next instruction if VX == NN
-                if (self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] as u16) == self.opcode & 0x00FF { self.pc += 4; }
+            OP_SKIP_EQUALS_NN => { // x3XNN : Skip next instruction if VX == NN
+                if self.get_nd_v(3) == ((self.opcode & 0x00FF) as u16) { self.pc += 4; }
                 else { self.pc += 2;}
             }
 
-            0x4000 => { // x4XNN : Skip next instruction if VX != NN
-                if (self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] as u16) != self.opcode & 0x00FF { self.pc += 4; }
+            OP_SKIP_NOT_EQUALS_NN => { // x4XNN : Skip next instruction if VX != NN
+                if self.get_nd_v(3) != ((self.opcode & 0x00FF) as u16) { self.pc += 4; }
                 else { self.pc += 2;}
             }
 
-            0x5000 => { // x5XY0 : Skip next instruction if VX == VY
-                if self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] == self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize] { self.pc += 4; }
+            OP_SKIP_EQUALS_XY => { // x5XY0 : Skip next instruction if VX == VY
+                if self.get_nd_v(3) == self.get_nd_v(2) { self.pc += 4; }
                 else { self.pc += 2;}
             }
 
-            0x6000 => { // x6XNN : Set VX = NN
-                self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] = ((self.opcode & 0x00FF) as u8);
+            OP_SET_VX_NN => { // x6XNN : Set VX = NN
+                self.V[self.get_nd_opcode(3) as usize] = ((self.opcode & 0x00FF) as u8);
                 self.pc += 2;
             }
 
-            0x7000 => { // x7XNN : Add NN to VX
-                //println!("{} + {} = {}", self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize], ((self.opcode & 0x00FF) as u8), 1);
-                let new = Wrapping(self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize]) + Wrapping(((self.opcode & 0x00FF) as u8));
-                self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] = new.0;
+            OP_ADD_VX_NN => { // x7XNN : Add NN to VX
+                let new = Wrapping(self.get_nd_v(3) as u8) + Wrapping(((self.opcode & 0x00FF) as u8));
+                self.V[self.get_nd_opcode(3) as usize] = new.0;
                 self.pc += 2;
             }
 
-            0x8000 => {
+            OP_VX_ARITHMETIC => {
                 match self.opcode & 0x00F {
-                    0x0000 => { // x8XY0 : Set VX = VY
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] = self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
+                    OP_SET_XY => { // x8XY0 : Set VX = VY
+                        self.V[self.get_nd_opcode(3) as usize] = self.get_nd_v(2) as u8;
                         self.pc += 2;
                     }
-                    0x0001 => { // x8XY1 : Set VX = VX | VY
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] |= self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
+                    OP_OR_XY => { // x8XY1 : Set VX = VX | VY
+                        self.V[self.get_nd_opcode(3) as usize] |= self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
                         self.pc += 2;
                     }
-                    0x0002 => { // x8XY2 : Set VX = VX & VY
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] &= self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
+                    OP_AND_XY => { // x8XY2 : Set VX = VX & VY
+                        self.V[self.get_nd_opcode(3) as usize] &= self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
                         self.pc += 2;
                     }
-                    0x0003 => { // x8XY3 : Set VX = VX ^ VY (xor)
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] ^= self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
+                    OP_XOR_XY => { // x8XY3 : Set VX = VX ^ VY (xor)
+                        self.V[self.get_nd_opcode(3) as usize] ^= self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
                         self.pc += 2;
                     }
-                    0x0004 => { // x8XY4 : Add VY to VX
-                        if self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize] > (0xFF - self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize]) {
+                    OP_ADD_XY => { // x8XY4 : Add VY to VX
+                        if self.get_nd_v(2) > (0xFF - self.get_nd_v(3)) {
                             self.V[0xF] = 1; //carry
                         }
                         else {
                             self.V[0xF] = 0;
                         }
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] += self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
+                        self.V[self.get_nd_opcode(3) as usize] += self.get_nd_v(2)  as u8;
                         self.pc += 2;
                     }
-                    0x0005 => { // x8XY5 : Subtract VY to VX (+carry)
-                        if self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize] > (self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize]) {
+                    OP_SUBTRACT_XY => { // x8XY5 : Subtract VY from VX (+carry)
+                        if self.get_nd_v(2) > self.get_nd_v(3) {
                             self.V[0xF] = 1; //carry
                         }
                         else {
                             self.V[0xF] = 0;
                         }
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] += self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize];
+                        self.V[self.get_nd_opcode(3) as usize] += self.get_nd_v(3)  as u8;
                         self.pc += 2;
                     }
-                    0x0006 => { // x8XY6 : Stores the least significant bit of VX in VF and then shifts VX to the right by 1
-                        self.V[0xF] = self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] & 0x01;
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] >>= 1;
+                    OP_SHIFT_RIGHT_XY => { // x8XY6 : Stores the least significant bit of VX in VF and then shifts VX to the right by 1
+                        self.V[0xF] = self.get_nd_v(3) as u8 & 0x01;
+                        self.V[self.get_nd_opcode(3) as usize] >>= 1;
                         self.pc += 2;
                     }
-                    0x0007 => { // x8XY7 : Set VX = VY - VX (+carry)
-                        if self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] > (self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize]) {
+                    OP_REVERSE_SUBTRACT_XY => { // x8XY7 : Set VX = VY - VX (+carry)
+                        if self.get_nd_v(3) > self.get_nd_v(2) {
                             self.V[0xF] = 1; //carry
                         }
                         else {
                             self.V[0xF] = 0;
                         }
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] =
-                            self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize] - self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize];
+                        self.V[self.get_nd_opcode(3) as usize] =
+                            (self.get_nd_v(2) - self.get_nd_v(3)) as u8;
                         self.pc += 2;
                     }
-                    0x000E => { // x8XYE : Stores the most significant bit of VX in VF and then shifts VX to the left by 1
-                        self.V[0xF] = self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] & 0x80;
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] <<= 1;
+                    OP_SHIFT_LEFT_XY => { // x8XYE : Stores the most significant bit of VX in VF and then shifts VX to the left by 1
+                        self.V[0xF] = self.get_nd_v(3) as u8 & 0x80;
+                        self.V[self.get_nd_opcode(3) as usize] <<= 1;
                         self.pc += 2;
                     }
                     _ => { // TODO: Check what to do here
@@ -211,29 +216,29 @@ impl Chip {
                 }
             }
 
-            0x9000 => { // x9XY0 : Skip next instruction if VX != VY
-                if self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] != self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize] { self.pc += 4; }
+            OP_SKIP_NOT_EQUALS_XY => { // x9XY0 : Skip next instruction if VX != VY
+                if self.get_nd_v(3) != self.get_nd_v(2) { self.pc += 4; }
                 else { self.pc += 2;}
             }
 
-            0xA000 => { // xANNN : Set I to address NNN
+            OP_SET_I_NNN => { // xANNN : Set I to address NNN
                 self.I = self.opcode & 0x0FFF;
                 self.pc += 2;
             }
 
-            0xB000 => { // xBNNN : Jumps to the address NNN plus V0
+            OP_JUMP_NNN_V0 => { // xBNNN : Jumps to the address NNN plus V0
                 self.pc = (self.opcode & 0x0FFF) + (self.V[0] as u16);
             }
 
-            0xC000 => { // xCXNN : Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN
+            OP_VX_RANDOM_AND_NN => { // xCXNN : Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN
                 let num = rand::thread_rng().gen_range(0..256);
-                self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] = (num & self.opcode & 0x00FF) as u8;
+                self.V[self.get_nd_opcode(3) as usize] = (num & self.opcode & 0x00FF) as u8;
                 self.pc += 2;
             }
 
-            0xD000 => { // xDXYN : Draw at (VX, VY) with height of N and width of 8
-                let x: u16 = self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] as u16;
-                let y: u16 = self.V[((self.opcode & 0x00F0) as u16 >> 4) as usize] as u16;
+            OP_DRAW => { // xDXYN : Draw at (VX, VY) with height of N and width of 8
+                let x: u16 = self.get_nd_v(3) as u16;
+                let y: u16 = self.get_nd_v(2) as u16;
                 let height: u16 = self.opcode & 0x000F;
                 let mut pixel: u16;
 
@@ -246,7 +251,7 @@ impl Chip {
                         if (pixel & (0x80 >> xline)) != 0
                         {
                             if self.gfx[(x + xline + (y + yline) * 64) as usize] == 1 {
-                                self.V[0xF as usize] = 1;
+                                self.V[0xF] = 1;
                             }
                             self.gfx[(x + xline + ((y + yline) * 64)) as usize] ^= 1;
                         }
@@ -257,14 +262,14 @@ impl Chip {
                 self.pc += 2;
             }
 
-            0xE000 => {
+            OP_SKIP_ON_INPUT => {
                 match self.opcode & 0x00FF {
-                    0x009E => { // xEX9E : Skip next instruction if key() == VX
-                        if self.key[self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] as usize] != 0 { self.pc += 4; }
+                    OP_SKIP_INPUT_EQUALS => { // xEX9E : Skip next instruction if key() == VX
+                        if self.key[self.get_nd_v(3) as usize] != 0 { self.pc += 4; }
                         else { self.pc += 2;}
                     }
-                    0x00A1 => { // xEX9E : Skip next instruction if key() != VX
-                        if self.key[self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] as usize] == 0 { self.pc += 4; }
+                    OP_SKIP_INPUT_NOT_EQUALS => { // xEXA1 : Skip next instruction if key() != VX
+                        if self.key[self.get_nd_v(3) as usize] == 0 { self.pc += 4; }
                         else { self.pc += 2;}
                     }
                     _ => {  // TODO: Check what to do here
@@ -273,49 +278,49 @@ impl Chip {
                 }
             }
 
-            0xF000 => {
+            OP_MISCELLANEOUS => {
                 match self.opcode & 0x00FF {
-                    0x0007 => { // xFX07 : Set VX to delay_timer
-                        self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] = self.delay_timer;
+                    OP_SET_VX_DELAY => { // xFX07 : Set VX to delay_timer
+                        self.V[self.get_nd_opcode(3) as usize] = self.delay_timer;
                         self.pc += 2;
                     }
-                    0x000A => { // xFX0A : [BLOCKING] Set VX to pressed key
+                    OP_SET_VX_KEY_BLOCKING => { // xFX0A : [BLOCKING] Set VX to pressed key
 
                     }
-                    0x0015 => { // xFX15 : Set delay_timer to VX
-                        self.delay_timer = self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize];
+                    OP_SET_DELAY_VX => { // xFX15 : Set delay_timer to VX
+                        self.delay_timer = self.get_nd_v(3) as u8;
                         self.pc += 2;
                     }
-                    0x0018 => { // xFX18 : Set sound_timer to VX
-                        self.sound_timer = self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize];
+                    OP_SET_SOUND_VX => { // xFX18 : Set sound_timer to VX
+                        self.sound_timer = self.get_nd_v(3) as u8;
                         self.pc += 2;
                     }
-                    0x001E => { // xFX1E : Adds VX to I, no carry
-                        self.I += self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] as u16;
+                    OP_ADD_VX_I => { // xFX1E : Adds VX to I, no carry
+                        self.I += self.get_nd_v(3) as u16;
                         self.pc += 2;
                     }
-                    0x0029 => { // xFX29 : Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font
-                        self.sound_timer = self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize];
+                    OP_SET_I_CHARACTER => { // xFX29 : Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font
+                        self.I = CHIP8_FONTSET[self.get_nd_v(3) as usize] as u16;
                         self.pc += 2;
                     }
-                    0x0033 => { // xFX33 : Binary coded decimal of X memory I-I+2
-                        self.memory[self.I as usize]     = self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] / 100;
-                        self.memory[(self.I + 1) as usize] = (self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] / 10) % 10;
-                        self.memory[(self.I + 2) as usize] = (self.V[((self.opcode & 0x0F00) as u16 >> 8) as usize] % 100) % 10;
+                    OP_BINARY_DECIMAL => { // xFX33 : Binary coded decimal of X memory I-I+2
+                        self.memory[self.I as usize]       = (self.get_nd_v(3) / 100) as u8;
+                        self.memory[(self.I + 1) as usize] = ((self.get_nd_v(3) / 10) % 10) as u8;
+                        self.memory[(self.I + 2) as usize] = ((self.get_nd_v(3) % 100) % 10) as u8;
                         self.pc += 2;
                     }
-                    0x0055 => { // xFX55 : Stores from V0 to VX (including VX) in memory, starting at address I.
+                    OP_STORE => { // xFX55 : Stores from V0 to VX (including VX) in memory, starting at address I.
                                 // The offset from I is increased by 1 for each value written, but I itself is left unmodified
                         let index = self.I;
-                        for i in 0..=((self.opcode & 0x0F00) as u16 >> 8) {
+                        for i in 0..=self.get_nd_opcode(3) {
                             self.memory[(index + i) as usize] = self.V[i as usize];
                         }
                         self.pc += 2;
                     }
-                    0x0065 => { // xFX65 : Fills from V0 to VX (including VX) with values from memory, starting at address I.
+                    OP_LOAD => { // xFX65 : Fills from V0 to VX (including VX) with values from memory, starting at address I.
                                 // The offset from I is increased by 1 for each value written, but I itself is left unmodified
                         let index = self.I;
-                        for i in 0..=((self.opcode & 0x0F00) as u16 >> 8) {
+                        for i in 0..=self.get_nd_opcode(3) {
                             self.V[i as usize] = self.memory[(index + i) as usize];
                         }
                         self.pc += 2;
