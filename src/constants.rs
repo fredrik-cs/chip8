@@ -1,7 +1,34 @@
+use winit::event::VirtualKeyCode;
+
 // General
+pub(crate) const GAMES : [&str; 2] = [
+    "tetris.ch8",
+    "slipperyslope.ch8"
+];
+pub(crate) const GAME_NAME : &str = GAMES[1];
 pub(crate) const CHIP_WIDTH : u32 = 64;
 pub(crate) const CHIP_HEIGHT : u32 = 32;
 pub(crate) const CHIP_MEMORY_SIZE : usize = 4096;
+pub(crate) const NO_KEY_PRESSED : u8 = 0x10;
+pub(crate) const DRAW_KEY_PRESSED : u8 = 0x11;
+pub(crate) const KEY_SET : [VirtualKeyCode; 16] = [
+    VirtualKeyCode::Key1,
+    VirtualKeyCode::Key2,
+    VirtualKeyCode::Key3,
+    VirtualKeyCode::Key4,
+    VirtualKeyCode::Q,
+    VirtualKeyCode::W,
+    VirtualKeyCode::E,
+    VirtualKeyCode::R,
+    VirtualKeyCode::A,
+    VirtualKeyCode::S,
+    VirtualKeyCode::D,
+    VirtualKeyCode::F,
+    VirtualKeyCode::Z,
+    VirtualKeyCode::X,
+    VirtualKeyCode::C,
+    VirtualKeyCode::V
+];
 
 // Sections
 pub(crate) const OP_ROUTINE : u16 = 0x0000;
