@@ -5,7 +5,7 @@ pub(crate) const GAMES : [&str; 2] = [
     "tetris.ch8",
     "slipperyslope.ch8"
 ];
-pub(crate) const GAME_NAME : &str = GAMES[1];
+pub(crate) const GAME_NAME : &str = GAMES[0];
 pub(crate) const CHIP_WIDTH : u32 = 64;
 pub(crate) const CHIP_HEIGHT : u32 = 32;
 pub(crate) const CHIP_MEMORY_SIZE : usize = 4096;

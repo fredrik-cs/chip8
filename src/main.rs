@@ -102,13 +102,13 @@ fn main(){
                         g.game.set_key(i, 1);
                     }
                     else if input.key_released(KEY_SET[i]) {
-                        println!{"requested in input {}", g.game.requested_key}
-                        println!{"i in input {}", i}
+                        //println!{"requested in input {}", g.game.requested_key}
+                        //println!{"i in input {}", i}
                         g.game.set_key(i, 0);
-                        if g.game.requested_key == i as u8 {
-                            g.game.requested_key = NO_KEY_PRESSED;
-                            g.game.pc += 2;
-                        }
+                        // if g.game.requested_key == i as u8 {
+                        //     g.game.requested_key = NO_KEY_PRESSED;
+                        //     g.game.pc += 2;
+                        // }
                     }
                 }
 

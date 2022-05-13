@@ -105,7 +105,7 @@ impl Chip {
 
 
         // Decode opcode
-        println!(" pc = {} | opcode = {:#06x}", self.pc, self.opcode);
+        //println!(" pc = {} | opcode = {:#06x}", self.pc, self.opcode);
 
 
         match opcode & 0xF000
@@ -309,6 +309,7 @@ impl Chip {
                                 self.v[self.get_nd_opcode(3) as usize] = self.requested_key;
                                 break;
                             }
+                            self.pc += 2;
                         }
                     }
                     OP_SET_DELAY_VX => { // xFX15 : Set delay_timer to VX
